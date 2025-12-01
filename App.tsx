@@ -239,14 +239,14 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white font-sans selection:bg-ios-twRed selection:text-white pb-24">
+    <div className="min-h-screen bg-black text-white font-sans selection:bg-ios-twRed selection:text-white pb-32">
       
       <div className={`fixed top-0 left-0 w-full h-96 blur-[120px] rounded-full pointer-events-none transition-colors duration-1000 ${appMode === 'MARKET' ? 'bg-indigo-900/20' : 'bg-orange-900/20'}`} />
       <div className="fixed bottom-0 right-0 w-full h-96 bg-purple-900/10 blur-[100px] rounded-full pointer-events-none" />
 
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-black/80 backdrop-blur-xl border-b border-white/5 transition-all">
-        <div className="px-6 pt-14 pb-4">
+      <header className="sticky top-0 z-40 bg-black/80 backdrop-blur-xl border-b border-white/5 transition-all pt-safe-top">
+        <div className="px-6 pt-2 pb-4">
           
           {/* Top Bar with Search Toggle */}
           <div className="flex justify-between items-center mb-4 min-h-[44px]">
@@ -369,7 +369,7 @@ const App: React.FC = () => {
       </header>
 
       {/* Main List */}
-      <main className="px-4 pt-4 space-y-4">
+      <main className="px-4 pt-4 space-y-4 pb-20">
         {appMode === 'MARKET' ? (
           stocks.length === 0 ? (
              <div className="text-center py-20 text-ios-gray">
@@ -468,7 +468,7 @@ const App: React.FC = () => {
       </main>
 
       {/* Bottom Nav */}
-      <nav className="fixed bottom-6 left-6 right-6 h-16 glass-panel rounded-full flex justify-around items-center px-2 z-40 shadow-2xl shadow-black/50">
+      <nav className="fixed bottom-6 left-6 right-6 h-16 glass-panel rounded-full flex justify-around items-center px-2 z-40 shadow-2xl shadow-black/50 mb-safe-bottom">
          <button onClick={() => setAppMode('MARKET')} className={`p-3 transition ${appMode === 'MARKET' ? 'text-white' : 'text-ios-gray'}`}><TrendingUp size={24} /></button>
          <button onClick={() => setIsSearchOpen(true)} className="p-3 text-ios-gray hover:text-white transition"><Search size={24} /></button>
          <button onClick={() => setAppMode('SIMULATION')} className={`p-3 transition ${appMode === 'SIMULATION' ? 'text-white' : 'text-ios-gray'}`}><PieChart size={24} /></button>
