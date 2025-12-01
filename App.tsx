@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, TrendingUp, Wallet, PieChart, Settings, Plus, X, RefreshCw } from 'lucide-react';
+import { Search, TrendingUp, Wallet, PieChart, Settings, X, RefreshCw } from 'lucide-react';
 import { StockData, MarketStatus, AppMode, Portfolio, PortfolioItem } from './types';
 import { INITIAL_STOCKS, getMarketStatus, updateStockWithRealData } from './services/stockUtils';
 import { getRealTimeStockQuotes, searchStockSymbol } from './services/geminiService';
 import StockDetail from './components/StockDetail';
 
 const App: React.FC = () => {
+  // stocks acts as the "Watchlist"
   const [stocks, setStocks] = useState<StockData[]>(INITIAL_STOCKS);
   const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
   const [marketStatus, setMarketStatus] = useState<MarketStatus>(MarketStatus.CLOSED);
@@ -22,6 +23,7 @@ const App: React.FC = () => {
 
   // Portfolio State
   const [initialCapital, setInitialCapital] = useState(5000000);
+  const [tempCapitalInput, setTempCapitalInput] = useState("5000000");
   const [showCapitalModal, setShowCapitalModal] = useState(false);
   const [portfolio, setPortfolio] = useState<Portfolio>({
     cash: initialCapital,
@@ -36,9 +38,21 @@ const App: React.FC = () => {
     if (isUpdating) return;
     setIsUpdating(true);
     try {
-      const symbols = stocks.map(s => s.symbol);
+      // Refresh both watchlist and currently selected stock
+      const symbolsToFetch = new Set<string>(stocks.map(s => s.symbol));
+      if (selectedStock) {
+        symbolsToFetch.add(selectedStock.symbol);
+      }
+
+      const symbols = Array.from(symbolsToFetch);
+      if (symbols.length === 0) {
+        setIsUpdating(false);
+        return;
+      }
+
       const realDataList = await getRealTimeStockQuotes(symbols);
       
+      // Update Watchlist
       setStocks(prevStocks => {
         return prevStocks.map(stock => {
           const data = realDataList.find(r => r.symbol === stock.symbol);
@@ -48,6 +62,15 @@ const App: React.FC = () => {
           return stock;
         });
       });
+
+      // Update Selected Stock (if open)
+      if (selectedStock) {
+         const data = realDataList.find(r => r.symbol === selectedStock.symbol);
+         if (data) {
+            setSelectedStock(prev => prev ? updateStockWithRealData(prev, data) : null);
+         }
+      }
+
       setLastUpdate(new Date());
     } catch (e) {
       console.error("Failed to refresh prices", e);
@@ -65,7 +88,6 @@ const App: React.FC = () => {
     refreshPrices();
 
     // Auto-refresh interval (5 seconds)
-    // 注意：實際生產環境應考慮 API 成本，這裡為了滿足需求設定為 5 秒
     intervalRef.current = setInterval(() => {
        const currentStatus = getMarketStatus();
        setMarketStatus(currentStatus);
@@ -84,7 +106,7 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
-    // Check if already in list
+    // Check if already in watchlist
     const existing = stocks.find(s => s.symbol === searchQuery || s.name.includes(searchQuery));
     if (existing) {
       setSelectedStock(existing);
@@ -99,12 +121,7 @@ const App: React.FC = () => {
     setIsSearching(false);
 
     if (result) {
-      // Check again if we have it by symbol now
-      const duplicate = stocks.find(s => s.symbol === result.symbol);
-      if (duplicate) {
-         setSelectedStock(duplicate);
-      } else {
-         // Create new stock entry
+         // Create new stock object for viewing (NOT added to watchlist yet)
          const newStock: StockData = {
            id: result.symbol,
            symbol: result.symbol,
@@ -125,23 +142,31 @@ const App: React.FC = () => {
            ma20: 0
          };
          
-         // Add to list first
-         setStocks(prev => [newStock, ...prev]);
-         // Then fetch its data immediately
+         // Fetch data immediately for this new stock
          const quotes = await getRealTimeStockQuotes([result.symbol]);
          if (quotes.length > 0) {
             const updatedStock = updateStockWithRealData(newStock, quotes[0]);
-            setStocks(prev => prev.map(s => s.symbol === result.symbol ? updatedStock : s));
             setSelectedStock(updatedStock);
          } else {
             setSelectedStock(newStock);
          }
-      }
+
       setSearchQuery("");
       setIsSearchOpen(false);
     } else {
       alert("找不到該股票，請確認名稱或代號。");
     }
+  };
+
+  const toggleWatchlist = (stock: StockData) => {
+    setStocks(prev => {
+      const exists = prev.find(s => s.symbol === stock.symbol);
+      if (exists) {
+        return prev.filter(s => s.symbol !== stock.symbol);
+      } else {
+        return [stock, ...prev];
+      }
+    });
   };
 
   const handleStockClick = (stock: StockData) => {
@@ -157,14 +182,16 @@ const App: React.FC = () => {
     }
   };
 
-  // Portfolio Calculations
+  // Portfolio Calculations (Based on Shares)
   const calculateTotalAssets = () => {
     let stockValue = 0;
     Object.values(portfolio.holdings).forEach((item: PortfolioItem) => {
-      const currentStock = stocks.find(s => s.symbol === item.symbol);
-      if (currentStock) {
-        stockValue += currentStock.price * item.quantity * 1000;
-      }
+      const currentStock = stocks.find(s => s.symbol === item.symbol) || selectedStock;
+      // Note: If stock is not in watchlist or selectedStock, value might be stale, 
+      // but in this app architecture we assume we have the price if we own it 
+      // (or we use average cost as fallback if price unavailable to avoid 0)
+      const price = (currentStock && currentStock.symbol === item.symbol) ? currentStock.price : item.averageCost;
+      stockValue += price * item.quantity; // No multiplier
     });
     return portfolio.cash + stockValue;
   };
@@ -174,10 +201,15 @@ const App: React.FC = () => {
     return totalAssets - initialCapital;
   };
 
-  const handleResetPortfolio = (newCapital: number) => {
-    setInitialCapital(newCapital);
+  const handleResetPortfolio = () => {
+    const newCap = parseInt(tempCapitalInput);
+    if (isNaN(newCap) || newCap < 0 || newCap > 10000000) {
+      alert("請輸入 0 ~ 10,000,000 之間的金額");
+      return;
+    }
+    setInitialCapital(newCap);
     setPortfolio({
-      cash: newCapital,
+      cash: newCap,
       holdings: {},
       history: []
     });
@@ -185,8 +217,7 @@ const App: React.FC = () => {
   };
 
   const handleTrade = (type: 'BUY' | 'SELL', stock: StockData, quantity: number) => {
-    const pricePerSheet = stock.price * 1000;
-    const totalAmount = pricePerSheet * quantity;
+    const totalAmount = stock.price * quantity; // No multiplier
 
     setPortfolio(prev => {
       const newPortfolio = { ...prev };
@@ -198,12 +229,12 @@ const App: React.FC = () => {
         const currentHolding = newPortfolio.holdings[stock.symbol];
         
         if (currentHolding) {
-          const totalCost = (currentHolding.averageCost * currentHolding.quantity * 1000) + totalAmount;
+          const totalCost = (currentHolding.averageCost * currentHolding.quantity) + totalAmount;
           const newQuantity = currentHolding.quantity + quantity;
           newPortfolio.holdings[stock.symbol] = {
             ...currentHolding,
             quantity: newQuantity,
-            averageCost: (totalCost / (newQuantity * 1000))
+            averageCost: (totalCost / newQuantity)
           };
         } else {
           newPortfolio.holdings[stock.symbol] = {
@@ -302,7 +333,10 @@ const App: React.FC = () => {
                   {/* Settings Trigger (Simulation Mode) */}
                   {appMode === 'SIMULATION' && (
                     <button 
-                      onClick={() => setShowCapitalModal(true)}
+                      onClick={() => {
+                        setTempCapitalInput(initialCapital.toString());
+                        setShowCapitalModal(true);
+                      }}
                       className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition"
                     >
                       <Settings size={20} />
@@ -373,7 +407,7 @@ const App: React.FC = () => {
         {appMode === 'MARKET' ? (
           stocks.length === 0 ? (
              <div className="text-center py-20 text-ios-gray">
-               <p>清單是空的</p>
+               <p>自選清單是空的</p>
                <button onClick={() => setIsSearchOpen(true)} className="mt-2 text-indigo-400 font-bold">立即搜尋加入</button>
              </div>
           ) : (
@@ -428,10 +462,11 @@ const App: React.FC = () => {
             </div>
           ) : (
              Object.values(portfolio.holdings).map((item: PortfolioItem) => {
-               const stock = stocks.find(s => s.symbol === item.symbol) || { price: item.averageCost };
-               const currentPrice = stock.price || item.averageCost;
-               const marketValue = currentPrice * item.quantity * 1000;
-               const costValue = item.averageCost * item.quantity * 1000;
+               // Get current market price if available, else use average cost
+               const stock = stocks.find(s => s.symbol === item.symbol);
+               const currentPrice = stock ? stock.price : item.averageCost;
+               const marketValue = currentPrice * item.quantity;
+               const costValue = item.averageCost * item.quantity;
                const pl = marketValue - costValue;
                const plPercent = ((currentPrice - item.averageCost) / item.averageCost) * 100;
                const isProfitable = pl >= 0;
@@ -439,14 +474,21 @@ const App: React.FC = () => {
                return (
                 <div 
                   key={item.symbol}
-                  onClick={() => stock.id ? handleStockClick(stock as StockData) : null}
+                  onClick={() => {
+                     if(stock) handleStockClick(stock);
+                     // If stock not in watchlist, we need to try finding it or show alert? 
+                     // Ideally we should be able to open detail for any held stock.
+                     // For now if it's not in stocks list, we might miss data, 
+                     // but handleSearch logic allows viewing arbitrary stocks.
+                     // We'll just show what we have in portfolio.
+                  }}
                   className="relative overflow-hidden group p-5 rounded-[2rem] glass-panel transition-all duration-300 active:scale-95 cursor-pointer border border-white/5 hover:border-white/10"
                 >
                   <div className="relative flex justify-between items-center">
                     <div>
                       <h3 className="text-xl font-bold tracking-tight">{item.symbol} <span className="text-base font-normal text-gray-400">{item.name}</span></h3>
                       <div className="flex gap-4 mt-1 text-sm text-ios-gray">
-                         <span>庫存 {item.quantity} 張</span>
+                         <span>庫存 {item.quantity} 股</span>
                          <span>均價 {item.averageCost.toFixed(1)}</span>
                       </div>
                     </div>
@@ -481,24 +523,44 @@ const App: React.FC = () => {
             <h3 className="text-xl font-bold mb-4">設定初始資金</h3>
             <p className="text-gray-400 text-sm mb-6">這將會重置您的模擬投資組合與所有交易紀錄。</p>
             
-            <div className="space-y-3 mb-6">
-              {[1000000, 3000000, 5000000, 10000000].map(amt => (
-                <button
-                  key={amt}
-                  onClick={() => handleResetPortfolio(amt)}
-                  className={`w-full py-3 rounded-xl font-medium border border-white/10 hover:bg-white/10 ${initialCapital === amt ? 'bg-orange-500/20 text-orange-400 border-orange-500/50' : 'text-gray-300'}`}
-                >
-                  ${(amt/10000).toLocaleString()} 萬
-                </button>
-              ))}
+            <div className="mb-6">
+                <label className="text-xs text-ios-gray mb-2 block uppercase tracking-wider">輸入金額 (TWD)</label>
+                <input 
+                  type="number" 
+                  value={tempCapitalInput}
+                  onChange={(e) => setTempCapitalInput(e.target.value)}
+                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-xl font-bold text-white focus:outline-none focus:border-indigo-500"
+                  placeholder="5000000"
+                  min="0"
+                  max="10000000"
+                />
+                <div className="flex gap-2 mt-3 overflow-x-auto no-scrollbar">
+                    {[100, 300, 500, 1000].map(val => (
+                        <button 
+                           key={val}
+                           onClick={() => setTempCapitalInput((val * 10000).toString())}
+                           className="whitespace-nowrap px-3 py-1 bg-white/5 rounded-lg text-sm text-gray-400 hover:bg-white/10 hover:text-white"
+                        >
+                            {val}萬
+                        </button>
+                    ))}
+                </div>
             </div>
             
-            <button 
-              onClick={() => setShowCapitalModal(false)}
-              className="w-full py-3 bg-gray-700 rounded-xl font-bold"
-            >
-              取消
-            </button>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowCapitalModal(false)}
+                className="flex-1 py-3 bg-gray-700/50 hover:bg-gray-700 rounded-xl font-bold transition"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleResetPortfolio}
+                className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold transition"
+              >
+                確認重置
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -511,6 +573,8 @@ const App: React.FC = () => {
           mode={appMode}
           portfolio={portfolio}
           onTrade={handleTrade}
+          isWatchlisted={stocks.some(s => s.symbol === selectedStock.symbol)}
+          onToggleWatchlist={() => toggleWatchlist(selectedStock)}
         />
       )}
     </div>

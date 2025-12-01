@@ -8,7 +8,7 @@ export interface StockData {
   open: number;
   high: number;
   low: number;
-  volume: number; // In lots (sheets)
+  volume: number; // In shares (股)
   eps: number;
   industry: string;
   // Simulated historical data for technical analysis
@@ -36,7 +36,7 @@ export enum MarketStatus {
 export interface PortfolioItem {
   symbol: string;
   name: string;
-  quantity: number; // In sheets (張)
+  quantity: number; // In shares (股)
   averageCost: number; // Per share price
 }
 
@@ -51,7 +51,7 @@ export interface TradeRecord {
   symbol: string;
   type: 'BUY' | 'SELL';
   price: number;
-  quantity: number;
+  quantity: number; // In shares (股)
   amount: number;
   timestamp: Date;
 }
