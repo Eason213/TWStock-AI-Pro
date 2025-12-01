@@ -1,17 +1,18 @@
 import { StockData, MarketStatus } from '../types';
 
 // 基礎清單，股價將由 API 更新
+// 將初始價格設為 0，讓 UI 顯示載入中，避免誤導
 export const INITIAL_STOCKS: StockData[] = [
   {
     id: '2330',
     symbol: '2330',
     name: '台積電',
-    price: 1080, // Placeholder
+    price: 0, 
     change: 0,
     changePercent: 0,
-    open: 1080,
-    high: 1080,
-    low: 1080,
+    open: 0,
+    high: 0,
+    low: 0,
     volume: 0,
     eps: 42.5,
     industry: '半導體',
@@ -25,12 +26,12 @@ export const INITIAL_STOCKS: StockData[] = [
     id: '2317',
     symbol: '2317',
     name: '鴻海',
-    price: 210,
+    price: 0,
     change: 0,
     changePercent: 0,
-    open: 210,
-    high: 210,
-    low: 210,
+    open: 0,
+    high: 0,
+    low: 0,
     volume: 0,
     eps: 11.5,
     industry: '電子代工',
@@ -44,12 +45,12 @@ export const INITIAL_STOCKS: StockData[] = [
     id: '2454',
     symbol: '2454',
     name: '聯發科',
-    price: 1260,
+    price: 0,
     change: 0,
     changePercent: 0,
-    open: 1260,
-    high: 1260,
-    low: 1260,
+    open: 0,
+    high: 0,
+    low: 0,
     volume: 0,
     eps: 55.2,
     industry: 'IC設計',
@@ -63,12 +64,12 @@ export const INITIAL_STOCKS: StockData[] = [
     id: '2603',
     symbol: '2603',
     name: '長榮',
-    price: 215,
+    price: 0,
     change: 0,
     changePercent: 0,
-    open: 215,
-    high: 215,
-    low: 215,
+    open: 0,
+    high: 0,
+    low: 0,
     volume: 0,
     eps: 22.5,
     industry: '航運',
@@ -114,6 +115,7 @@ export const getMarketStatus = (): MarketStatus => {
 
 // Generate fake history based on current price for chart visualization
 export const generateHistory = (currentPrice: number): number[] => {
+  if (currentPrice === 0) return [];
   const history = [];
   let price = currentPrice;
   for (let i = 0; i < 30; i++) {
@@ -130,9 +132,9 @@ export const updateStockWithRealData = (existingStock: StockData, realData: Part
   
   // If we don't have history or price changed significantly, regenerate or append
   let newHistory = existingStock.history;
-  if (newHistory.length === 0) {
+  if (newHistory.length === 0 && newPrice > 0) {
       newHistory = generateHistory(newPrice);
-  } else {
+  } else if (newPrice > 0) {
       // Append new price, keep length at 30
       newHistory = [...newHistory.slice(1), newPrice];
   }

@@ -1,7 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
 import { StockData, AIAnalysisResult } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Lazy initialization helper to prevent top-level crashes if process.env is not ready
+const getAIClient = () => {
+  return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+};
 
 // 模型設定
 const MODEL_ID = "gemini-2.5-flash";
@@ -22,6 +25,7 @@ const parseJSON = <T>(text: string | undefined): T | null => {
 
 // 1. AI 個股分析 (強化建議與信心度)
 export const analyzeStockWithAI = async (stock: StockData): Promise<AIAnalysisResult> => {
+  const ai = getAIClient();
   const prompt = `
     你是一位狼性十足的台灣股市當沖與波段操盤手。請根據目前最新的股價數據與即時新聞，判斷現在是否為好的買賣點。
     
@@ -34,7 +38,7 @@ export const analyzeStockWithAI = async (stock: StockData): Promise<AIAnalysisRe
     均線參考：MA5=${stock.ma5}, MA10=${stock.ma10}, MA20=${stock.ma20}
     
     【任務執行】
-    1. 使用 googleSearch 搜尋 "${stock.symbol} ${stock.name} 即時新聞" 與 "法人動向"。
+    1. 使用 googleSearch 搜尋 "TPE:${stock.symbol} ${stock.name} 即時新聞" 與 "法人動向"。
     2. 結合技術面（股價是否站上均線、乖離率）與消息面進行分析。
     3. 給出極度明確的建議：
        - 若趨勢向上且有量，建議 BUY。
@@ -59,7 +63,6 @@ export const analyzeStockWithAI = async (stock: StockData): Promise<AIAnalysisRe
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
-        // googleSearch 不支援 responseMimeType: "application/json"，需手動解析
       }
     });
 
@@ -83,6 +86,7 @@ export const analyzeStockWithAI = async (stock: StockData): Promise<AIAnalysisRe
 // 2. 獲取即時股價 (修正搜尋邏輯)
 export const getRealTimeStockQuotes = async (symbols: string[]): Promise<Partial<StockData>[]> => {
   if (symbols.length === 0) return [];
+  const ai = getAIClient();
 
   // 強制加上 "TPE:" 前綴，確保 Google Finance 抓到的是台灣證交所數據
   const symbolsString = symbols.map(s => `TPE:${s}`).join(", ");
@@ -91,10 +95,12 @@ export const getRealTimeStockQuotes = async (symbols: string[]): Promise<Partial
     請利用 Google Search 查詢 Google Finance，回傳以下台灣股票的「最新即時成交價」。
     股票列表：${symbolsString}
     
-    注意：
-    1. 務必抓取 "TWD" 計價的數值。
-    2. 若目前是收盤時間，回傳當日收盤價。
-    3. "change" 為漲跌金額，"changePercent" 為漲跌幅(%)。
+    重要規則：
+    1. 必須搜尋 "Google Finance TPE:${symbols[0]}" 等關鍵字。
+    2. 務必抓取 "TWD" 計價的數值。
+    3. 若目前是收盤時間，回傳當日收盤價 (Close Price)。
+    4. 若目前是開盤時間，回傳即時成交價 (Current Price)。
+    5. "change" 為漲跌金額，"changePercent" 為漲跌幅(%)。
     
     【輸出格式】
     直接回傳純 JSON Array 字串：
@@ -128,6 +134,7 @@ export const getRealTimeStockQuotes = async (symbols: string[]): Promise<Partial
 
 // 3. 搜尋新股票
 export const searchStockSymbol = async (query: string): Promise<{symbol: string, name: string} | null> => {
+  const ai = getAIClient();
   const prompt = `
     使用者搜尋台灣股票："${query}"。
     請搜尋確認這是否為有效的上市櫃台股。

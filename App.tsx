@@ -437,15 +437,24 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="text-right">
-                      <div className="text-2xl font-bold tracking-tight tabular-nums">
-                        {stock.price > 0 ? stock.price.toFixed(1) : '--'}
-                      </div>
-                      <div className={`flex items-center justify-end gap-1 text-sm font-semibold ${isUp ? 'text-ios-twRed' : 'text-ios-twGreen'}`}>
-                        <span>{stock.change > 0 ? '+' : ''}{stock.change.toFixed(2)}</span>
-                        <span className="bg-white/10 px-1.5 py-0.5 rounded text-xs">
-                          {stock.changePercent.toFixed(2)}%
-                        </span>
-                      </div>
+                      {stock.price === 0 ? (
+                          <div className="flex flex-col items-end gap-1">
+                             <div className="w-20 h-6 bg-white/10 rounded animate-pulse" />
+                             <div className="w-12 h-4 bg-white/10 rounded animate-pulse" />
+                          </div>
+                      ) : (
+                        <>
+                          <div className="text-2xl font-bold tracking-tight tabular-nums">
+                            {stock.price.toFixed(1)}
+                          </div>
+                          <div className={`flex items-center justify-end gap-1 text-sm font-semibold ${isUp ? 'text-ios-twRed' : 'text-ios-twGreen'}`}>
+                            <span>{stock.change > 0 ? '+' : ''}{stock.change.toFixed(2)}</span>
+                            <span className="bg-white/10 px-1.5 py-0.5 rounded text-xs">
+                              {stock.changePercent.toFixed(2)}%
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -465,10 +474,13 @@ const App: React.FC = () => {
                // Get current market price if available, else use average cost
                const stock = stocks.find(s => s.symbol === item.symbol);
                const currentPrice = stock ? stock.price : item.averageCost;
-               const marketValue = currentPrice * item.quantity;
+               // If price is 0 (loading), fallback to average cost to show temporary numbers
+               const displayPrice = currentPrice > 0 ? currentPrice : item.averageCost;
+
+               const marketValue = displayPrice * item.quantity;
                const costValue = item.averageCost * item.quantity;
                const pl = marketValue - costValue;
-               const plPercent = ((currentPrice - item.averageCost) / item.averageCost) * 100;
+               const plPercent = ((displayPrice - item.averageCost) / item.averageCost) * 100;
                const isProfitable = pl >= 0;
 
                return (
@@ -494,12 +506,18 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="text-right">
-                      <div className={`text-xl font-bold tracking-tight ${isProfitable ? 'text-ios-twRed' : 'text-ios-twGreen'}`}>
-                        {pl > 0 ? '+' : ''}{Math.floor(pl).toLocaleString()}
-                      </div>
-                      <div className={`text-sm font-medium ${isProfitable ? 'text-ios-twRed' : 'text-ios-twGreen'}`}>
-                        {plPercent.toFixed(2)}%
-                      </div>
+                      {currentPrice === 0 && !stock ? (
+                           <div className="text-sm text-ios-gray">更新中...</div>
+                      ) : (
+                        <>
+                            <div className={`text-xl font-bold tracking-tight ${isProfitable ? 'text-ios-twRed' : 'text-ios-twGreen'}`}>
+                                {pl > 0 ? '+' : ''}{Math.floor(pl).toLocaleString()}
+                            </div>
+                            <div className={`text-sm font-medium ${isProfitable ? 'text-ios-twRed' : 'text-ios-twGreen'}`}>
+                                {plPercent.toFixed(2)}%
+                            </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
